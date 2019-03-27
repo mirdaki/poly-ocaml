@@ -16,3 +16,7 @@ tests/%.out: tests/%.in main.byte
 
 tests: main.byte $(OUT_FILES)
 	@echo "Done testing. Results in tests dir."
+
+install:
+	opam install menhir
+	opam install ocamlbuild
