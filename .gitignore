@@ -34,3 +34,6 @@ setup.log
 _opam/
 
 # End of https://www.gitignore.io/api/ocaml
+
+# Project specific
+tests/*.out
