@@ -17,13 +17,35 @@ type pExp =
   *)
   | Times of pExp list (* List of terms multiplied *)
 
-
+(* 
+  Create a list for powers
+*)
+let rec to_pow (pL: pExp list) (e: Expr.expr) (i: int): pExp =
+  if i <> 0 then
+    to_pow (List.cons (from_expr e) pL) e (i - 1)
+  else
+    Times(pL)
+and
 (*
   Function to traslate betwen AST expressions
   to pExp expressions
 *)
-let from_expr (_e: Expr.expr) : pExp =
-    Term(0,0) (* TODO *)
+from_expr (e: Expr.expr) : pExp =
+  match e with 
+    | Num(i) -> Term(i, 0)
+    | Var(_c) -> Term(1, 1)
+    | Add(e1, e2) -> Plus([(from_expr e1); (from_expr e2)])
+    | Sub(e1, e2) -> Plus([(from_expr e1); Times([Term(-1, 0); (from_expr e2)])])
+    | Mul(e1, e2) -> Times([(from_expr e1); (from_expr e2)])
+    | Pow(e, i) -> to_pow [] e i
+    | Pos(e) -> from_expr e
+    | Neg(e) -> Times([Term(-1, 0); (from_expr e)])
+
+(* 
+((x+1))^3
+Pow(Add(Var('x'), Num(1)), 3)
+
+*)
 
 (* 
   Compute degree of a polynomial expression.
@@ -32,7 +54,11 @@ let from_expr (_e: Expr.expr) : pExp =
   Hint 2: Degree of Plus[...] is the max of the degree of args
   Hint 3: Degree of Times[...] is the sum of the degree of args 
 *)
-let degree (_e: pExp): int = 0 (* TODO *)
+let rec degree (e: pExp): int = 
+  match e with 
+    | Term(n,m) -> m
+    | Plus(eL) -> List.fold_left (fun maxNum item -> max maxNum (degree item)) 0 eL
+    | Times(eL) -> List.fold_left (fun sumNum item -> sumNum + (degree item)) 0 eL
 
 (* 
   Comparison function useful for sorting of Plus[..] args 
@@ -46,17 +72,12 @@ let rec print_pExp_r (e: pExp): unit =
   match e with
     | Term(i1, i2) -> 
       begin
-        begin
-        match i1 with 
-          | 1 -> Printf.printf ""
-          | _ -> Printf.printf "%d" i1
-        end;
-        begin
-        match i2 with 
-          | 0 -> Printf.printf ""
-          | 1 -> Printf.printf "x"
-          | _ -> Printf.printf "x^%d" i2
-        end;
+        match (i1, i2) with 
+          | (0, _) -> Printf.printf "0"
+          | (i1, 0) -> Printf.printf "%d" i1
+          | (1, 1) -> Printf.printf "x"
+          | (1, i2) -> Printf.printf "x^%d" i2
+          | (i1, i2) -> Printf.printf "%dx^%d" i1 i2
       end
     | Plus(eL) -> 
         Printf.printf "(";
@@ -68,6 +89,7 @@ let rec print_pExp_r (e: pExp): unit =
         done;
         Printf.printf ")"
     | Times(eL) -> 
+    Printf.printf "(";
         for i = 0 to ((List.length eL) - 1) do
           print_pExp_r (List.nth eL i);
           if i != ((List.length eL) - 1) then
@@ -86,7 +108,7 @@ let rec print_pExp_r (e: pExp): unit =
   Hint 2: Recurse on the elements of Plus[..] or Times[..]
 *)
 let print_pExp (e: pExp): unit =
-  print_pExp_r e
+  print_pExp_r e;
   print_newline()
 
 (* A slightly janky way of doing int exponent *)
@@ -134,6 +156,12 @@ let equal_pExp (e1: pExp) (e2: pExp): bool =
       => Plus[Times[Term(1,1); Term(3,3)]; Times[Term(2,2); Term(3,3)]]
       => Plus[Term(2,3); Term(6,5)]
   Hint 6: Find other situations that can arise
+*)
+(* 
+Hint: When converting Add(x,y), the easy thing to do is to append the x and y list together, to make a simple Plus[xy] instead of Plus[Plus[x]; Plus[y]] 
+The longer the list, the simmpler the simplification
+Not sure where this goes, but (P(x))^10 can be represnted by Times[P(x);...]
+Can convert a -(...) to Times[-1;(...)]
 *)
 let simplify1 (e: pExp): pExp =
     e
