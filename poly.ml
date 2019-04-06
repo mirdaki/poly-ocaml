@@ -42,12 +42,6 @@ from_expr (e: Expr.expr) : pExp =
     | Neg(e) -> Times([Term(-1, 0); (from_expr e)])
 
 (* 
-((x+1))^3
-Pow(Add(Var('x'), Num(1)), 3)
-
-*)
-
-(* 
   Compute degree of a polynomial expression.
 
   Hint 1: Degree of Term(n,m) is m
@@ -65,8 +59,8 @@ let rec degree (e: pExp): int =
   to "normalize them". This way, terms that need to be reduced
   show up one after another.
   *)
-let compare (e1: pExp) (e2: pExp) : bool =
-  degree e1 > degree e2
+let compare_degree (e1: pExp) (e2: pExp) : int =
+  compare (degree e2) (degree e1)
 
 let rec print_pExp_r (e: pExp): unit = 
   match e with
@@ -76,6 +70,7 @@ let rec print_pExp_r (e: pExp): unit =
           | (0, _) -> Printf.printf "0"
           | (i1, 0) -> Printf.printf "%d" i1
           | (1, 1) -> Printf.printf "x"
+          | (i1, 1) -> Printf.printf "%dx" i1
           | (1, i2) -> Printf.printf "x^%d" i2
           | (i1, i2) -> Printf.printf "%dx^%d" i1 i2
       end
@@ -89,7 +84,7 @@ let rec print_pExp_r (e: pExp): unit =
         done;
         Printf.printf ")"
     | Times(eL) -> 
-    Printf.printf "(";
+        Printf.printf "(";
         for i = 0 to ((List.length eL) - 1) do
           print_pExp_r (List.nth eL i);
           if i != ((List.length eL) - 1) then
@@ -130,15 +125,39 @@ let rec rand_list (iL: int list) (size: int): int list =
   else 
     iL
 
-(* 
-  Compute if two pExp are the same 
-  Make sure this code works before you work on simplify1  
-*)
+(* Compute if two pExp are equivalent *)
 let equal_pExp (e1: pExp) (e2: pExp): bool =
   (* Get the power for the n+1 calculation *)
   let power = degree e1 in
   let values = rand_list [] (power + 1) in
   List.fold_left (fun b x -> if b && (eval e1 x) = (eval e2 x) then true else false) true values
+
+(* Check the structure of two pExp and see if they match exactly *)
+let rec hit_fix_point (lastRun: pExp) (thisRun: pExp) (result: bool): bool =
+  (* Quick out if one thing doesn't match *)
+  if result = false then
+    result
+  else
+    match (lastRun, thisRun) with
+    | (Term(n1, m1), Term(n2, m2)) -> (
+      if n1 = n2 && m1 = m2 then
+        true
+      else
+        false
+    )
+    | (Plus(l1), Plus(l2)) -> List.fold_left2 (fun res i1 i2 -> hit_fix_point i1 i2 res) result l1 l2
+    | (Times(l1), Times(l2)) -> List.fold_left2 (fun res i1 i2 -> hit_fix_point i1 i2 res) result l1 l2
+    | _ -> false
+
+let rec add_list (head: pExp list) (tail: pExp list): pExp list =
+  match tail with 
+    | Term(n1, m1)::Term(n2, m2)::tl ->
+      if m1 = m2 then
+        add_list head (List.cons (Term(n1+n2, m1)) tl)
+      else
+        add_list (head@[Term(n1, m1)]) ([Term(n2, m2)]@tl)
+    | e::tl -> add_list (head@[e]) tl
+    | [] -> head
 
 (* 
   Function to simplify (one pass) pExpr
@@ -163,17 +182,59 @@ The longer the list, the simmpler the simplification
 Not sure where this goes, but (P(x))^10 can be represnted by Times[P(x);...]
 Can convert a -(...) to Times[-1;(...)]
 *)
-let simplify1 (e: pExp): pExp =
-    e
+let rec simplify1 (e: pExp): pExp =
+    match e with
+      (* Return basic terms *)
+      | Term(n, m) -> e
+      | Plus(l) ->
+        begin
+          let l = List.sort compare_degree l in
+          match l with
+            (* If it only holds one item, pull it out *)
+            | hd::[] -> simplify1 hd
+            (* Flaten-ing out list one by one *)
+            | Plus(l1)::tl -> simplify1 (Plus(l1@tl))
+            (* Additon *)
+            | Term(n, m)::tl -> Plus(add_list [] ([Term(n, m)]@tl))
+            (* Flatten times within a plus *)
+            | Times(l1)::Times(l2)::tl -> Plus(List.cons (Times(l1@l2)) tl)
+            (* Re-shuffle around to see if something happens *)
+            | hd::e::tl -> Plus(List.cons e (tl@[hd]))
+        end
+      | Times(l) ->
+        begin
+          match l with
+            (* If it only holds one item, pull it out *)
+            | hd::[] -> simplify1 hd
+            (* Flaten-ing out list one by one *)
+            | Times(l1)::tl -> simplify1 (Times(l1@tl))
+            (* Multiplication *)
+            | Term(n1, m1)::Term(n2, m2)::tl -> Times(List.cons (Term(n1*n2, m1+m2)) tl)
+            (* Flatten times within a plus *)
+            | Plus(l1)::Plus(l2)::tl -> Times(List.cons (simplify1 (Plus(l1@l2))) tl)
+            (* Re-shuffle around to see if something happens *)
+            | hd::e::tl -> Times(List.cons e (tl@[hd]))
+        end
 
 (* Fixed point version of simplify1 
   i.e. Apply simplify1 until no 
   progress is made
 *)    
 let rec simplify (e: pExp): pExp =
-  let rE = simplify1(e) in
+  let rE = simplify1 e in
+  if hit_fix_point e rE false then
+    e
+  else (
     print_pExp rE;
-    if (equal_pExp e rE) then
-      e
-    else  
-      simplify(rE)
+    simplify rE
+  )
+  
+(* Call simplify and check if the final value is the same as the first *)
+let check_simplify (e: pExp): pExp =
+  let final = simplify e in
+  if (equal_pExp e final) then
+    Printf.printf "The values are the same\n"
+  else  
+    Printf.printf "The values are not the same\n"
+  ;
+  final
