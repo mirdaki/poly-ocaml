@@ -145,9 +145,35 @@ let rec hit_fix_point (lastRun: pExp) (thisRun: pExp) (result: bool): bool =
       else
         false
     )
-    | (Plus(l1), Plus(l2)) -> List.fold_left2 (fun res i1 i2 -> hit_fix_point i1 i2 res) result l1 l2
-    | (Times(l1), Times(l2)) -> List.fold_left2 (fun res i1 i2 -> hit_fix_point i1 i2 res) result l1 l2
+    | (Plus(l1), Plus(l2)) -> 
+      if (List.length l1) = (List.length l2) then
+        List.fold_left2 (fun res i1 i2 -> hit_fix_point i1 i2 res) result l1 l2
+      else 
+        false
+    | (Times(l1), Times(l2)) -> 
+      if (List.length l1) = (List.length l2) then
+        List.fold_left2 (fun res i1 i2 -> hit_fix_point i1 i2 res) result l1 l2
+      else 
+        false
     | _ -> false
+
+(* let rec flatten_list (head: pExp list) (tail: pExp list): pExp list =
+  match tail with 
+    | Plus(l1)::Plus(l2)::tl -> flatten_list head ([Plus(l1@l2)]@tl)
+    | Times(l1)::Times(l2)::tl -> flatten_list head ([Times(l1@l2)]@tl)
+    | e::tl -> flatten_list (head@[e]) tl
+    | [] -> head *)
+
+let distribute (items: pExp list) (theRest: pExp list): pExp =
+  let l = List.map (fun i -> Times([i]@theRest)) items in
+  Plus(l)
+(*   let l = [];
+  List.iter (
+    fun i -> List.iter (
+      fun j -> l = (Times([i]@[j])@l)
+    ) theRest
+  ) items;
+  Plus(l) *)
 
 let rec add_list (head: pExp list) (tail: pExp list): pExp list =
   match tail with 
@@ -156,9 +182,25 @@ let rec add_list (head: pExp list) (tail: pExp list): pExp list =
         add_list head (List.cons (Term(n1+n2, m1)) tl)
       else
         add_list (head@[Term(n1, m1)]) ([Term(n2, m2)]@tl)
-    | e::tl -> add_list (head@[e]) tl
+    | e::tl -> add_list (head@[simplify1 e]) tl
     | [] -> head
 
+and
+
+multiply_list (head: pExp list) (tail: pExp list): pExp list =
+  match tail with 
+    | Term(n1, m1)::Term(n2, m2)::tl -> multiply_list head (List.cons (Term(n1*n2, m1+m2)) tl)
+(*     | Term(n1, m1)::Plus(l)::tl -> 
+      let t = List.map ( fun i -> 
+        match i with
+          | Term(n2, m2) -> Term(n1*n2, m1+m2)
+          | _ -> i
+      ) l in
+      multiply_list head (t@tl) *)
+    | e::tl -> multiply_list (head@[simplify1 e]) tl
+    | [] -> head
+
+and 
 (* 
   Function to simplify (one pass) pExpr
 
@@ -182,38 +224,45 @@ The longer the list, the simmpler the simplification
 Not sure where this goes, but (P(x))^10 can be represnted by Times[P(x);...]
 Can convert a -(...) to Times[-1;(...)]
 *)
-let rec simplify1 (e: pExp): pExp =
+simplify1 (e: pExp): pExp =
     match e with
       (* Return basic terms *)
       | Term(n, m) -> e
       | Plus(l) ->
         begin
+          (* Flatten and add what can be added together and sort it *)
+(*           let l = flatten_list [] l in
+          let l = List.sort compare_degree l in *)
+          let l = add_list [] l in
           let l = List.sort compare_degree l in
           match l with
             (* If it only holds one item, pull it out *)
             | hd::[] -> simplify1 hd
             (* Flaten-ing out list one by one *)
             | Plus(l1)::tl -> simplify1 (Plus(l1@tl))
-            (* Additon *)
-            | Term(n, m)::tl -> Plus(add_list [] ([Term(n, m)]@tl))
             (* Flatten times within a plus *)
-            | Times(l1)::Times(l2)::tl -> Plus(List.cons (Times(l1@l2)) tl)
+            (* | Times(l1)::Times(l2)::tl -> simplify1 (Plus(List.cons (Times(l1@l2)) tl)) *)
+            | _ -> Plus(l)
             (* Re-shuffle around to see if something happens *)
-            | hd::e::tl -> Plus(List.cons e (tl@[hd]))
+            (* | hd::e::tl -> Plus(List.cons e (tl@[hd])) *)
         end
       | Times(l) ->
         begin
+          (* Flatten and multiply what can be multiplied together *)
+          (* let l = flatten_list [] l in *)
+          let l = multiply_list [] l in
           match l with
             (* If it only holds one item, pull it out *)
             | hd::[] -> simplify1 hd
             (* Flaten-ing out list one by one *)
             | Times(l1)::tl -> simplify1 (Times(l1@tl))
-            (* Multiplication *)
-            | Term(n1, m1)::Term(n2, m2)::tl -> Times(List.cons (Term(n1*n2, m1+m2)) tl)
+            (* Distributivity *)
+            | Plus(l1)::tl -> Times([(distribute l1 tl)])
             (* Flatten times within a plus *)
-            | Plus(l1)::Plus(l2)::tl -> Times(List.cons (simplify1 (Plus(l1@l2))) tl)
+            (* | Plus(l1)::Plus(l2)::tl -> Times(List.cons (simplify1 (Plus(l1@l2))) tl) *)
+            | _ -> Times(l)
             (* Re-shuffle around to see if something happens *)
-            | hd::e::tl -> Times(List.cons e (tl@[hd]))
+            (* | hd::e::tl -> Times(List.cons e (tl@[hd])) *)
         end
 
 (* Fixed point version of simplify1 
@@ -222,7 +271,7 @@ let rec simplify1 (e: pExp): pExp =
 *)    
 let rec simplify (e: pExp): pExp =
   let rE = simplify1 e in
-  if hit_fix_point e rE false then
+  if hit_fix_point e rE true then
     e
   else (
     print_pExp rE;
@@ -231,6 +280,7 @@ let rec simplify (e: pExp): pExp =
   
 (* Call simplify and check if the final value is the same as the first *)
 let check_simplify (e: pExp): pExp =
+  print_pExp e;
   let final = simplify e in
   if (equal_pExp e final) then
     Printf.printf "The values are the same\n"
