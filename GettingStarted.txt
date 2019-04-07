@@ -37,9 +37,9 @@ you add tests to show correctness.
 Hint: Add rules to deal with sums of fraction and deal with top
 and bottom of a fraction as two independent polynomials to simplify
 
-
 Bonus 2 (20%) independent of Bonus 1
 =============
 Add support for multiple variables (up to 26 due to single letter vars).
 Hint: need to generalize Term() and most other things. Each variable needs
 a separate power in the term. Add tests to show correctness.
+

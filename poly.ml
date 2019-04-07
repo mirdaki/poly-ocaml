@@ -117,12 +117,12 @@ let rec eval (e: pExp) (x: int): int =
     | Plus(eL) -> List.fold_left (fun sum item -> sum + (eval item x)) 0 eL
     | Times(eL) -> List.fold_left (fun product item -> product * (eval item x)) 1 eL
 
-(* Create a list of random ints with range [0-999) *)
+(* Create a list of random ints with range [0-99) *)
 let rec rand_list (iL: int list) (size: int): int list =
   Random.self_init ();
   if size <> (List.length iL) - 1 then
     (* TODO: Revise this to work with all of the tests *)
-    rand_list ((Random.int 20)::iL) size
+    rand_list ((Random.int 99)::iL) size
   else 
     iL
 
@@ -131,9 +131,9 @@ let equal_pExp (e1: pExp) (e2: pExp): bool =
   (* Get the power for the n+1 calculation *)
   let power = degree e1 in
   let values = rand_list [] power in
-  Printf.printf "Power is %d\n" power;
+  (* Printf.printf "Power is %d\n" power; *)
   List.fold_left (fun b x -> 
-    Printf.printf " Value is %d, original is %d, new is %d\n" x (eval e1 x) (eval e2 x);
+    (* Printf.printf " Value is %d, original is %d, new is %d\n" x (eval e1 x) (eval e2 x); *)
     if b && (eval e1 x) = (eval e2 x) then true else false
   ) true values
 
@@ -182,27 +182,21 @@ let rec hit_fix_point (lastRun: pExp) (thisRun: pExp) (result: bool): bool =
       => 
   Hint 6: Find other situations that can arise
 *)
-(* 
-Hint: When converting Add(x,y), the easy thing to do is to append the x and y list together, to make a simple Plus[xy] instead of Plus[Plus[x]; Plus[y]] 
-The longer the list, the simmpler the simplification
-Not sure where this goes, but (P(x))^10 can be represnted by Times[P(x);...]
-Can convert a -(...) to Times[-1;(...)]
-*)
 
 let rec simplify1 (e: pExp): pExp =
-    Printf.printf "Hit simplify1\n";
+    (* Printf.printf "Hit simplify1\n"; *)
     match e with
       (* Return basic terms *)
       | Term(n, m) -> e
       | Plus(l) ->
         begin
           let rec add_list (head: pExp list) (tail: pExp list): pExp list =
-            Printf.printf "Hit add\n";
+            (* Printf.printf "Hit add\n"; *)
             match tail with 
               (* Regular math *)
               | Term(n1, m1)::Term(n2, m2)::tl ->
-                if m1 = m2 then
-                  add_list head (List.cons (Term(n1+n2, m1)) tl)
+                if m1 = m2 || n2 = 0 then
+                  add_list head (Term(n1 + n2, m1)::tl)
                 else
                   add_list (head@[Term(n1, m1)]) (Term(n2, m2)::tl)
               (* Flatten out *)
@@ -222,27 +216,26 @@ let rec simplify1 (e: pExp): pExp =
         end
       | Times(l) ->
         begin
-          let distribute (items: pExp list) (theRest: pExp list): pExp =
-            let l = List.map (fun i -> Times(i::theRest)) items in
-            Plus(l)
-          in
           let rec multiply_list (head: pExp list) (tail: pExp list): pExp list =
-            Printf.printf "Hit multiply\n";
+            (* Printf.printf "Hit multiply\n"; *)
             match tail with 
               (* Regular math *)
-              | Term(n1, m1)::Term(n2, m2)::tl -> multiply_list head (List.cons (Term(n1*n2, m1+m2)) tl)
+              | Term(n1, m1)::Term(n2, m2)::tl -> multiply_list head (Term(n1 * n2, m1 + m2)::tl)
               (* Flatten out *)
               | Times(l)::tl -> multiply_list head (l@tl)
               (* Constant times exprestions *)
               | Term(n1, m1)::Plus(l)::tl | Plus(l)::Term(n1, m1)::tl -> 
                 let t = List.map (fun i -> 
                   match i with
-                    | Term(n2, m2) -> Term(n1*n2, m1+m2)
+                    | Term(n2, m2) -> Term(n1 * n2, m1 + m2)
                     | _ -> Times([Term(n1, m1); i])
                 ) l in
                 multiply_list head ( (Plus(t))::tl)
-              (* Distributivity *)
-              | Plus(l)::tl -> multiply_list (head@[distribute l tl]) []
+              (* Distribution *)
+              | Plus(l)::tl -> multiply_list (head@(
+                  let nl = List.map (fun i -> Times(multiply_list [] (i::tl))) l in
+                  [Plus(nl)]
+                )) []
               (* If don't know, simplify and move past *)
               | e::tl -> multiply_list (head@[simplify1 e]) tl
               (* Once done iterating over everything, return the new list *)
@@ -265,7 +258,7 @@ let rec simplify (e: pExp): pExp =
   if hit_fix_point e rE true then
     e
   else (
-    print_pExp rE;
+    (* print_pExp rE; *)
     simplify rE
   )
   
