@@ -121,7 +121,6 @@ let rec eval (e: pExp) (x: int): int =
 let rec rand_list (iL: int list) (size: int): int list =
   Random.self_init ();
   if size <> (List.length iL) - 1 then
-    (* TODO: Revise this to work with all of the tests *)
     rand_list ((Random.int 99)::iL) size
   else 
     iL
@@ -182,25 +181,22 @@ let rec hit_fix_point (lastRun: pExp) (thisRun: pExp) (result: bool): bool =
       => 
   Hint 6: Find other situations that can arise
 *)
-
 let rec simplify1 (e: pExp): pExp =
-    (* Printf.printf "Hit simplify1\n"; *)
     match e with
       (* Return basic terms *)
       | Term(n, m) -> e
       | Plus(l) ->
         begin
           let rec add_list (head: pExp list) (tail: pExp list): pExp list =
-            (* Printf.printf "Hit add\n"; *)
             match tail with 
+              (* Flatten out *)
+              | Plus(l)::tl -> add_list head (l@tl)
               (* Regular math *)
               | Term(n1, m1)::Term(n2, m2)::tl ->
                 if m1 = m2 || n2 = 0 then
                   add_list head (Term(n1 + n2, m1)::tl)
                 else
                   add_list (head@[Term(n1, m1)]) (Term(n2, m2)::tl)
-              (* Flatten out *)
-              | Plus(l)::tl -> add_list head (l@tl)
               (* If don't know, simplify and move past *)
               | e::tl -> add_list (head@[simplify1 e]) tl
               (* Once done iterating over everything, return the new list *)
@@ -211,29 +207,29 @@ let rec simplify1 (e: pExp): pExp =
           let l = List.sort compare_degree l in
           match l with
             (* If it only holds one item, pull it out *)
-            | hd::[] -> hd
+            | hd::[] -> simplify1 hd
             | _ -> Plus(l)
         end
       | Times(l) ->
         begin
           let rec multiply_list (head: pExp list) (tail: pExp list): pExp list =
-            (* Printf.printf "Hit multiply\n"; *)
             match tail with 
-              (* Regular math *)
-              | Term(n1, m1)::Term(n2, m2)::tl -> multiply_list head (Term(n1 * n2, m1 + m2)::tl)
               (* Flatten out *)
               | Times(l)::tl -> multiply_list head (l@tl)
+              (* Regular math *)
+              | Term(n1, m1)::Term(n2, m2)::tl -> multiply_list head (Term(n1 * n2, m1 + m2)::tl)
               (* Term * Plus *)
               | Term(n1, m1)::Plus(l)::tl | Plus(l)::Term(n1, m1)::tl -> 
                 let t = List.map (fun i -> 
                   match i with
+                    (* Adding speed optimizations *)
                     | Term(n2, m2) -> Term(n1 * n2, m1 + m2)
-                    | _ -> Times(multiply_list [] [Term(n1, m1); i])
+                    | Times(nl) -> Times(multiply_list [] (Term(n1, m1)::nl))
+                    | Plus(nl) ->Times(multiply_list [] [Term(n1, m1); i])
                 ) l in
                 multiply_list head ((Plus(t))::tl)
               (* Distribution *)
-              | Plus(l1)::Plus(l2)::tl -> 
-                  multiply_list (head@(
+              | Plus(l1)::Plus(l2)::tl -> multiply_list (head@(
                   let l = List.map (fun i -> Times(multiply_list [] [i; Plus(l2)])) l1 in
                   [Plus(l)]
                 )) tl
@@ -246,7 +242,7 @@ let rec simplify1 (e: pExp): pExp =
           let l = multiply_list [] l in
           match l with
             (* If it only holds one item, pull it out *)
-            | hd::[] -> hd
+            | hd::[] -> simplify1  hd
             | _ -> Times(l)
         end
 
