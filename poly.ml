@@ -223,19 +223,20 @@ let rec simplify1 (e: pExp): pExp =
               | Term(n1, m1)::Term(n2, m2)::tl -> multiply_list head (Term(n1 * n2, m1 + m2)::tl)
               (* Flatten out *)
               | Times(l)::tl -> multiply_list head (l@tl)
-              (* Constant times exprestions *)
+              (* Term * Plus *)
               | Term(n1, m1)::Plus(l)::tl | Plus(l)::Term(n1, m1)::tl -> 
                 let t = List.map (fun i -> 
                   match i with
                     | Term(n2, m2) -> Term(n1 * n2, m1 + m2)
-                    | _ -> Times([Term(n1, m1); i])
+                    | _ -> Times(multiply_list [] [Term(n1, m1); i])
                 ) l in
-                multiply_list head ( (Plus(t))::tl)
+                multiply_list head ((Plus(t))::tl)
               (* Distribution *)
-              | Plus(l)::tl -> multiply_list (head@(
-                  let nl = List.map (fun i -> Times(multiply_list [] (i::tl))) l in
-                  [Plus(nl)]
-                )) []
+              | Plus(l1)::Plus(l2)::tl -> 
+                  multiply_list (head@(
+                  let l = List.map (fun i -> Times(multiply_list [] [i; Plus(l2)])) l1 in
+                  [Plus(l)]
+                )) tl
               (* If don't know, simplify and move past *)
               | e::tl -> multiply_list (head@[simplify1 e]) tl
               (* Once done iterating over everything, return the new list *)
@@ -258,7 +259,7 @@ let rec simplify (e: pExp): pExp =
   if hit_fix_point e rE true then
     e
   else (
-    (* print_pExp rE; *)
+    print_pExp rE;
     simplify rE
   )
   
